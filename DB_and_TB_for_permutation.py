@@ -65,7 +65,6 @@ optimizer_DB = torch.optim.Adam(
 
 
 def loss_fn_DB():
-        loss = 0
         state = [-1] * N
         way = []
         while True:
@@ -89,6 +88,7 @@ def loss_fn_DB():
                         break
                 Pb = max(Pb, 1)
                 way.append([F, torch.log(Pf[ind]), log(Pb)])
+        loss = 0
         for i in range(0, len(way) - 1):
                 loss += (way[i][0] + way[i][1] - way[i + 1][0] - way[i + 1][2]) ** 2
         return loss, state
@@ -96,49 +96,49 @@ def loss_fn_DB():
 
 #######################################################################################
 
-# model_TB_Pfs = torch.nn.Sequential(
-#     OrderedDict([
-#         ("linear_1", torch.nn.Linear(N * N, hidden_size)),
-#         ("activation_1", torch.nn.ReLU()),
-#         ("linear_2", torch.nn.Linear(hidden_size, N * N))
-#     ])
-# )
-# optimizer_TB_Pfs = torch.optim.Adam(
-#     model_TB_Pfs.parameters(),
-#     lr=lr
-# )
-#
-# model_TB_log_Z = torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))
-# optimizer_TB_log_Z = torch.optim.Adam([model_TB_log_Z], lr_Z)
-#
-# def loss_fn_TB():
-#         loss = 0
-#         state = [-1] * N
-#         way = []
-#         while True:
-#                 Pf = model_DB(torch.tensor(transfer(state)))
-#                 for i in range(N):
-#                         if state[i] != -1:
-#                                 for j in range(N):
-#                                         Pf[i * N + j] = -float("inf")
-#                                         Pf[j * N + state[i]] = -float("inf")
-#                 Pf = torch.nn.functional.softmax(Pf, dim=0)
-#                 ind = torch.distributions.categorical.Categorical(Pf).sample()
-#                 Pb = 0
-#                 for i in range(0, N):
-#                         if state[i] != -1:
-#                                 Pb += 1
-#                 state[ind // N] = ind % N
-#                 if Pb == N - 1:
-#                         way.append([0, 0])
-#                         break
-#                 Pb = max(Pb, 1)
-#                 way.append([torch.log(Pf[ind]), log(Pb)])
-#         loss = model_TB_log_Z - log(numpy.exp(-reward(state)))
-#         for i in range(0, len(way) - 1):
-#                 loss += (way[i][0] + way[i][1] - way[i + 1][0] - way[i + 1][2])
-#         loss = loss ** 2
-#         return loss, state
+model_TB_Pfs = torch.nn.Sequential(
+        OrderedDict([
+                ("linear_1", torch.nn.Linear(N * N, hidden_size)),
+                ("activation_1", torch.nn.ReLU()),
+                ("linear_2", torch.nn.Linear(hidden_size, N * N))
+        ])
+)
+optimizer_TB_Pfs = torch.optim.Adam(
+        model_TB_Pfs.parameters(),
+        lr=lr
+)
+
+model_TB_log_Z = torch.nn.Parameter(torch.tensor(0.0, requires_grad=True))
+optimizer_TB_log_Z = torch.optim.Adam([model_TB_log_Z], lr_Z)
+
+
+def loss_fn_TB():
+        state = [-1] * N
+        way = []
+        while True:
+                Pf = model_TB_Pfs(torch.tensor(transfer(state)))
+                for i in range(N):
+                        if state[i] != -1:
+                                for j in range(N):
+                                        Pf[i * N + j] = -float("inf")
+                                        Pf[j * N + state[i]] = -float("inf")
+                Pf = torch.nn.functional.softmax(Pf, dim=0)
+                ind = torch.distributions.categorical.Categorical(Pf).sample()
+                Pb = 0
+                for i in range(0, N):
+                        if state[i] != -1:
+                                Pb += 1
+                state[ind // N] = ind % N
+                if Pb == N - 1:
+                        way.append([0, 0])
+                        break
+                Pb = max(Pb, 1)
+                way.append([torch.log(Pf[ind]), log(Pb)])
+        loss = model_TB_log_Z - log(numpy.exp(-reward(state)))
+        for i in range(0, len(way) - 1):
+                loss += way[i][0] - way[i + 1][1]
+        loss = loss ** 2
+        return loss, state
 
 
 #######################################################################################
@@ -159,6 +159,7 @@ for i in range(_):
         cnt[i] /= 10000
 
 avg_cnt_DB = [0] * _
+avg_cnt_TB = [0] * _
 
 
 def empirical_loss_DB(samples=1000):
@@ -170,9 +171,19 @@ def empirical_loss_DB(samples=1000):
         return loss
 
 
+def empirical_loss_TB(samples=1000):
+        global avg_cnt_DB
+        loss = 0
+        for i in range(_):
+                avg_cnt_TB[i] /= samples
+                loss += abs(avg_cnt_TB[i] - cnt[i])
+        return loss
+
+
 #######################################################################################
 
 losses_DB = []
+losses_TB = []
 plt.ion()
 for i in range(op):
         optimizer_DB.zero_grad()
@@ -185,7 +196,17 @@ for i in range(op):
         loss.backward()
         optimizer_DB.step()
         ###
-
+        optimizer_TB_Pfs.zero_grad()
+        optimizer_TB_log_Z.zero_grad()
+        x = loss_fn_TB()
+        loss = x[0]
+        t = []
+        for j in x[1]:
+                t.append(j.item())
+        avg_cnt_TB[tmp[tuple(t)]] += 1
+        loss.backward()
+        optimizer_TB_Pfs.step()
+        optimizer_TB_log_Z.step()
         ###
         if i % 1000 == 0 and i != 0:
                 print(i)
@@ -193,8 +214,13 @@ for i in range(op):
                 print(x)
                 losses_DB.append(x)
                 avg_cnt_DB = [0] * _
+                x = empirical_loss_TB(1000)
+                print(x)
+                losses_TB.append(x)
+                avg_cnt_TB = [0] * _
                 clear_output(wait=True)
                 plt.plot(losses_DB)
+                plt.plot(losses_TB)
                 plt.legend(['DB', 'TB'])
                 plt.xlabel('iteraton')
                 plt.ylabel('metric')
