@@ -17,7 +17,7 @@ print(p)
 op = 1000000
 batch = 1
 hidden_size = 100
-lr = 0.0001
+lr = 0.01
 lr_Z = 0.1
 
 
@@ -32,14 +32,7 @@ def transfer(state):
         return res
 
 
-# def reward(q):
-#         global N, p
-#         w = 0
-#         for i in range(N):
-#                 w += abs(q[i] - p[q[(i + 1) % N]])
-#         return w
-
-def reward(q):
+def count(q):
         global N
         cnt = 0
         for i in range(N):
@@ -84,7 +77,7 @@ def loss_fn_DB():
                                 Pb += 1
                 state[ind // N] = ind % N
                 if Pb == N - 1:
-                        way.append([log(numpy.exp(-reward(state))), 0, 0])
+                        way.append([-count(state), 0, 0])
                         break
                 Pb = max(Pb, 1)
                 way.append([F, torch.log(Pf[ind]), log(Pb)])
@@ -134,7 +127,7 @@ def loss_fn_TB():
                         break
                 Pb = max(Pb, 1)
                 way.append([torch.log(Pf[ind]), log(Pb)])
-        loss = model_TB_log_Z - log(numpy.exp(-reward(state)))
+        loss = model_TB_log_Z - (-count(state))
         for i in range(0, len(way) - 1):
                 loss += way[i][0] - way[i + 1][1]
         loss = loss ** 2
@@ -149,7 +142,7 @@ prop = []
 for i in itertools.permutations(p):
         tmp[i] = _
         _ += 1
-        prop.append(-reward(i))
+        prop.append(-count(i))
 prop = torch.nn.functional.softmax(torch.tensor(prop), dim=0)
 rnd = torch.distributions.categorical.Categorical(prop)
 cnt = [0] * _
@@ -158,32 +151,42 @@ for i in range(10000):
 for i in range(_):
         cnt[i] /= 10000
 
-avg_cnt_DB = [0] * _
-avg_cnt_TB = [0] * _
+
+states_DB = []
+states_TB = []
 
 
 def empirical_loss_DB(samples=1000):
-        global avg_cnt_DB
+        global states_DB
+        avg_cnt_DB = dict()
+        for i in range(min(samples, len(states_DB))):
+                if states_DB[-i] not in avg_cnt_DB:
+                        avg_cnt_DB[states_DB[-i]] = 0
+                avg_cnt_DB[states_DB[-i]] += 1
         loss = 0
-        for i in range(_):
-                avg_cnt_DB[i] /= samples
-                loss += abs(avg_cnt_DB[i] - cnt[i])
+        for i in avg_cnt_DB.keys():
+                avg_cnt_DB[i] /= min(samples, len(states_TB))
+                loss += abs(avg_cnt_DB[i] - cnt[tmp[i]])
         return loss
-
 
 def empirical_loss_TB(samples=1000):
-        global avg_cnt_DB
+        global states_TB
+        avg_cnt_TB = dict()
+        for i in range(min(samples, len(states_TB))):
+                if states_TB[-i] not in avg_cnt_TB:
+                        avg_cnt_TB[states_TB[-i]] = 0
+                avg_cnt_TB[states_TB[-i]] += 1
         loss = 0
-        for i in range(_):
-                avg_cnt_TB[i] /= samples
-                loss += abs(avg_cnt_TB[i] - cnt[i])
+        for i in avg_cnt_TB.keys():
+                avg_cnt_TB[i] /= min(samples, len(states_TB))
+                loss += abs(avg_cnt_TB[i] - cnt[tmp[i]])
         return loss
-
 
 #######################################################################################
 
 losses_DB = []
 losses_TB = []
+iterations = []
 plt.ion()
 for i in range(op):
         optimizer_DB.zero_grad()
@@ -192,7 +195,7 @@ for i in range(op):
         t = []
         for j in x[1]:
                 t.append(j.item())
-        avg_cnt_DB[tmp[tuple(t)]] += 1
+        states_DB.append(tuple(t))
         loss.backward()
         optimizer_DB.step()
         ###
@@ -203,27 +206,28 @@ for i in range(op):
         t = []
         for j in x[1]:
                 t.append(j.item())
-        avg_cnt_TB[tmp[tuple(t)]] += 1
+        states_TB.append(tuple(t))
         loss.backward()
         optimizer_TB_Pfs.step()
         optimizer_TB_log_Z.step()
         ###
-        if i % 1000 == 0 and i != 0:
+        if i % 1000 == 0:
                 print(i)
-                x = empirical_loss_DB(1000)
+                iterations.append(i)
+                x = empirical_loss_DB(10000)
                 print(x)
                 losses_DB.append(x)
-                avg_cnt_DB = [0] * _
-                x = empirical_loss_TB(1000)
+                x = empirical_loss_TB(10000)
                 print(x)
                 losses_TB.append(x)
-                avg_cnt_TB = [0] * _
                 clear_output(wait=True)
-                plt.plot(losses_DB)
-                plt.plot(losses_TB)
+                plt.plot(iterations, losses_DB)
+                plt.plot(iterations, losses_TB)
                 plt.legend(['DB', 'TB'])
-                plt.xlabel('iteraton')
+                plt.xlabel('iteration')
                 plt.ylabel('metric')
+                if i % 10000 == 0:
+                        plt.savefig("permutations9.pdf", format="pdf", bbox_inches="tight")
                 plt.draw()
                 plt.pause(0.001)
                 plt.clf()
