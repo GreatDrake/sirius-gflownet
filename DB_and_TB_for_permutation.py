@@ -165,7 +165,7 @@ def empirical_loss_DB(samples=1000):
                 avg_cnt_DB[states_DB[-i]] += 1
         loss = 0
         for i in avg_cnt_DB.keys():
-                avg_cnt_DB[i] /= min(samples, len(states_TB))
+                avg_cnt_DB[i] /= min(samples, len(states_DB))
                 loss += abs(avg_cnt_DB[i] - cnt[tmp[i]])
         return loss
 
