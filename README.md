@@ -2,6 +2,8 @@
 
 Shamil Gabitov, Gleb Korelin, Maxim Soldatov, Karam Suleimanov, Egor Dobshikov.
 
+Supervisor: Nikita Morozov.
+
 We conducted a number of experiments with Generative Flow Networks and their results were reflected in a PDF report. This repository contains code for experiments with visualization tools and a PDF report.
 
 ```gflownet_sirius_report.pdf``` is our PDF report.
