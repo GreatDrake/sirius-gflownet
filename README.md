@@ -8,4 +8,4 @@ We conducted a number of experiments with Generative Flow Networks and their res
 
 ```DB_and_TB_with_Pb_and_graphic_for_hypergrid.ipynb``` is code for first experiment with hypergrib.
 
-```DB_and_TB_for_permutation.py is code for second``` experiment with permutations.
+```DB_and_TB_for_permutation.py``` is code for second experiment with permutations.
